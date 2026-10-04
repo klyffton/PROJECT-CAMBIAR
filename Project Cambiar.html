@@ -1,0 +1,1078 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Meu RPG Tático - Caverna Iluminada</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
+html, body { width: 100%; height: 100%; background-color: #0b0e0d; overflow: hidden; position: fixed; font-family: 'Segoe UI', system-ui, sans-serif; color: #fff; }
+#game-wrapper { position: relative; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; background: #0b0e0d; }
+#battle-canvas { width: 100%; height: 100%; object-fit: contain; display: block; }
+
+/* Botão de Tela Cheia centralizado e maior */
+#fullscreen-btn { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 20; background: rgba(0, 0, 0, 0.75); border: 2px solid rgba(255, 215, 0, 0.6); color: #ffd700; padding: 14px 28px; border-radius: 20px; font-size: 16px; font-weight: bold; cursor: pointer; backdrop-filter: blur(6px); box-shadow: 0 6px 20px rgba(0,0,0,0.8); }
+
+/* Botão de áudio ocultado */
+#audio-btn { display: none; }
+
+/* HUD Superior ajustado para ficar bem no topo da tela */
+#hud-top { position: absolute; top: 0; left: 50%; transform: translateX(-50%); z-index: 10; display: flex; flex-direction: column; align-items: center; gap: 4px; pointer-events: none; width: 100%; padding-top: 2px; }
+#turn-timeline { display: flex; gap: 8px; background: rgba(20, 24, 30, 0.7); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); padding: 4px 12px; border-radius: 0 0 6px 6px; border-top: none; border-left: 2px solid rgba(70, 85, 100, 0.8); border-right: 2px solid rgba(70, 85, 100, 0.8); border-bottom: 2px solid rgba(70, 85, 100, 0.8); outline: 1px solid rgba(10, 12, 15, 0.8); box-shadow: 0 4px 12px rgba(0,0,0,0.8); max-width: 95vw; overflow-x: auto; pointer-events: auto; align-items: center; position: relative; }
+#turn-timeline::before, #turn-timeline::after, #bars-container::before, #bars-container::after { content: ''; position: absolute; width: 4px; height: 4px; background-color: rgba(120, 140, 160, 0.7); box-shadow: 0 0 2px rgba(0,0,0,0.8); }
+#turn-timeline::before { top: 3px; left: 3px; }
+#turn-timeline::after { bottom: 3px; right: 3px; }
+
+.timeline-avatar { width: 46px; height: 46px; border-radius: 6px; display: flex; align-items: center; justify-content: center; border: 2px solid rgba(56, 66, 75, 0.6); background: rgba(17, 20, 23, 0.6); transition: all 0.3s ease; flex-shrink: 0; overflow: hidden; position: relative; }
+.timeline-avatar.hero { border-color: rgba(46, 125, 50, 0.8); background: rgba(27,94,32,0.5); }
+.timeline-avatar.enemy { border-color: rgba(198, 40, 40, 0.8); background: rgba(183,28,28,0.5); }
+.timeline-avatar.active { transform: scale(1.1); border-color: #ffd700; background: rgba(255,215,0,0.65); box-shadow: 0 0 10px #ffd700; }
+.timeline-avatar canvas { width: 100%; height: 100%; display: block; }
+
+#hud-timer-container { display: flex; align-items: center; gap: 4px; background: rgba(20, 24, 30, 0.7); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); padding: 2px 10px; border-radius: 0 0 4px 4px; border: 1.5px solid rgba(70, 85, 100, 0.8); border-top: none; outline: 1px solid rgba(10, 12, 15, 0.8); box-shadow: 0 2px 8px rgba(0,0,0,0.7); pointer-events: auto; }
+#hud-timer { font-size: 13px; font-weight: bold; color: #ffd700; text-shadow: 0 1px 3px rgba(0,0,0,0.9); }
+
+#hud-bottom-container { position: absolute; bottom: max(12px, env(safe-area-inset-bottom)); left: 10px; right: 10px; display: flex; flex-direction: column; gap: 8px; z-index: 10; }
+#cd-floating-wrapper { display: none; flex-direction: column; gap: 2px; width: 48%; max-width: 180px; align-self: center; background: rgba(20, 24, 30, 0.8); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); padding: 3px 8px; border-radius: 5px; border: 1.5px solid rgba(70, 85, 100, 0.8); outline: 1px solid rgba(10, 12, 15, 0.8); box-shadow: 0 2px 8px rgba(0,0,0,0.8); }
+.cd-header { display: flex; justify-content: space-between; font-size: 8px; font-weight: bold; color: #ffd700; line-height: 1; }
+.cd-bar-bg { width: 100%; height: 4px; background: rgba(10, 12, 14, 0.8); border-radius: 2px; overflow: hidden; border: 1px solid rgba(51, 60, 70, 0.6); }
+.cd-bar-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #0288d1, #29b6f6); box-shadow: 0 0 4px rgba(41,182,246,0.8); }
+
+/* Novo indicativo de turno do inimigo */
+#enemy-turn-indicator { display: none; flex-direction: column; align-items: center; justify-content: center; gap: 2px; background: rgba(183, 28, 28, 0.45); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); padding: 8px 12px; border-radius: 6px; border: 2px solid rgba(239, 83, 80, 0.8); outline: 1px solid rgba(10, 12, 15, 0.8); box-shadow: 0 4px 12px rgba(0,0,0,0.8); order: 1; animation: pulseEnemyTurn 1.2s infinite alternate; }
+.enemy-turn-title { font-size: 9px; font-weight: bold; color: #ff8a80; text-transform: uppercase; letter-spacing: 1px; }
+.enemy-turn-name { font-size: 13px; font-weight: bold; color: #ffffff; text-shadow: 0 1px 3px rgba(0,0,0,0.9); }
+
+@keyframes pulseEnemyTurn {
+    0% { border-color: rgba(239, 83, 80, 0.6); box-shadow: 0 4px 12px rgba(183, 28, 28, 0.4); }
+    100% { border-color: rgba(255, 235, 59, 0.9); box-shadow: 0 4px 18px rgba(255, 152, 0, 0.6); }
+}
+
+#bars-container { display: flex; flex-direction: column; gap: 2px; background: rgba(20, 24, 30, 0.7); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); padding: 4px 8px; border-radius: 6px; border: 2px solid rgba(70, 85, 100, 0.8); outline: 1px solid rgba(10, 12, 15, 0.8); box-shadow: 0 4px 12px rgba(0,0,0,0.8); order: 2; position: relative; }
+#bars-container::before { top: 2px; left: 2px; } #bars-container::after { bottom: 2px; right: 2px; }
+.bar-wrapper { display: flex; align-items: center; gap: 6px; font-size: 9px; font-weight: bold; position: relative; }
+.bar-wrapper canvas { width: 12px; height: 12px; flex-shrink: 0; }
+.progress-bg { flex-grow: 1; height: 6px; background: rgba(10, 12, 14, 0.6); border: 1px solid rgba(51, 60, 70, 0.6); border-radius: 2px; overflow: hidden; padding: 0; }
+.progress-fill { height: 100%; width: 100%; transition: width 0.1s linear; opacity: 0.85; }
+#fill-hp { background: linear-gradient(90deg, #991b1b, #ef4444); } #fill-mp { background: linear-gradient(90deg, #1565c0, #1e88e5); } #fill-en { background: linear-gradient(90deg, #f57f17, #fbc02d); }
+.bar-text { font-size: 8px; position: absolute; right: 6px; color: #fff; font-weight: bold; text-shadow: 0 1px 2px rgba(0,0,0,0.9); line-height: 6px; }
+
+#actions-menu { display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; order: 1; }
+.action-btn { color: #fff; border-radius: 6px; font-weight: bold; font-size: 9px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; position: relative; overflow: hidden; height: 50px; background: rgba(20, 24, 30, 0.7); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); border: 2px solid rgba(70, 85, 100, 0.8); outline: 1px solid rgba(10, 12, 15, 0.8); box-shadow: 0 3px 6px rgba(0,0,0,0.7); transition: all 0.15s ease; }
+.action-btn canvas { width: 28px; height: 28px; display: block; pointer-events: none; }
+.action-btn.selected { border: 2px solid #ffd700 !important; background: rgba(61, 49, 24, 0.8) !important; box-shadow: 0 0 12px rgba(255, 215, 0, 0.8), inset 0 0 8px rgba(255, 215, 0, 0.4) !important; transform: scale(1.05); }
+.action-btn:active { transform: scale(0.94); }
+
+#modal-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); backdrop-filter: blur(3px); z-index: 150; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 15px; padding: 20px; }
+.modal-box { background: rgba(20, 24, 30, 0.92); backdrop-filter: blur(8px); border: 2px solid rgba(70, 85, 100, 0.9); outline: 1px solid #0a0c0f; border-radius: 8px; padding: 20px; width: 85%; max-width: 320px; text-align: center; box-shadow: 0 10px 20px rgba(0,0,0,0.9); }
+.modal-title { font-size: 18px; font-weight: bold; margin-bottom: 8px; color: #ffd700; text-shadow: 0 1px 2px rgba(0,0,0,0.8); }
+.modal-text { font-size: 13px; margin-bottom: 15px; color: #ddd; line-height: 1.4; }
+.modal-btn-group { display: flex; gap: 10px; justify-content: center; }
+.modal-btn { padding: 8px 18px; border-radius: 6px; font-weight: bold; font-size: 12px; cursor: pointer; border: 2px solid #4a5562; }
+.modal-btn.confirm { background: rgba(46, 125, 50, 0.85); color: #fff; border-color: #81c784; }
+.modal-btn.cancel { background: rgba(198, 40, 40, 0.85); color: #fff; border-color: #ef5350; }
+
+#toast-container { display: flex; flex-direction: column; align-items: center; gap: 6px; z-index: 100; pointer-events: none; width: 100%; }
+
+/* Pop-ups / Toasts mais transparentes para não atrapalhar */
+.toast { padding: 6px 14px; border-radius: 6px; font-size: 10.5px; font-weight: bold; color: rgba(255, 255, 255, 0.9); text-align: center; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); box-shadow: 0 2px 6px rgba(0,0,0,0.2); text-shadow: 0 1px 2px rgba(0,0,0,0.8); animation: slideDownFade 2.2s ease-in-out forwards; }
+.toast.erro { background: rgba(183, 28, 28, 0.3); border: 1px solid rgba(239, 83, 80, 0.4); }
+.toast.aviso { background: rgba(230, 81, 0, 0.3); border: 1px solid rgba(255, 167, 38, 0.4); }
+.toast.sucesso { background: rgba(46, 125, 50, 0.3); border: 1px solid rgba(129, 199, 132, 0.4); }
+
+@keyframes slideDownFade { 0% { opacity: 0; transform: translateY(-10px); } 15% { opacity: 0.85; transform: translateY(0); } 85% { opacity: 0.85; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-10px); } }
+</style>
+</head>
+<body>
+<div id="game-wrapper">
+    <button id="audio-btn">🔊 Som: On</button>
+    <button id="fullscreen-btn" onclick="toggleFullScreen()">⛶ Tela Cheia</button>
+    <div id="hud-top">
+        <div id="turn-timeline"></div>
+        <div id="hud-timer-container">
+            <span style="font-size: 11px;">⏳</span>
+            <div id="hud-timer">20s</div>
+        </div>
+        <div id="toast-container"></div>
+    </div>
+    <canvas id="battle-canvas" width="1080" height="2400"></canvas>
+    
+    <div id="modal-overlay">
+        <div class="modal-box">
+            <div id="modal-title" class="modal-title">Aviso</div>
+            <div id="modal-text" class="modal-text">Texto descritivo aqui...</div>
+            <div id="modal-buttons" class="modal-btn-group">
+                <button class="modal-btn confirm" onclick="fecharModal(true)">Sim</button>
+                <button class="modal-btn cancel" onclick="fecharModal(false)">Não</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Barra de skills inferior que ficará oculta no turno inimigo -->
+    <div id="hud-bottom-container">
+        <div id="cd-floating-wrapper">
+            <div class="cd-header"><span id="cd-title-txt">CONJURANDO</span><span id="cd-time-txt">0.0s</span></div>
+            <div class="cd-bar-bg"><div id="cd-bar-fill" class="cd-bar-fill"></div></div>
+        </div>
+
+        <!-- Painel informativo de qual inimigo está atacando -->
+        <div id="enemy-turn-indicator">
+            <span class="enemy-turn-title">⚠️ Turno do Inimigo Atacando</span>
+            <span id="enemy-turn-name-txt" class="enemy-turn-name">Nome do Inimigo</span>
+        </div>
+
+        <div id="actions-menu">
+            <button id="btn-basica" class="action-btn" onclick="usarAcao('basica')">
+                <canvas id="icon-basica" width="32" height="32"></canvas><span style="font-size: 8px; color: #a5d6a7;">Ataque</span>
+            </button>
+            <button id="btn-forte" class="action-btn" onclick="usarAcao('forte')">
+                <canvas id="icon-forte" width="32" height="32"></canvas><span id="lbl-skill-nome" style="font-size: 8px; color: #ffeb3b;">Skill</span>
+            </button>
+            <button id="btn-buff" class="action-btn" onclick="usarAcao('buff')">
+                <canvas id="icon-buff" width="32" height="32"></canvas><span style="font-size: 8px; color: #ffe0b2;">Buff</span>
+            </button>
+            <button id="btn-pocao" class="action-btn" onclick="usarAcao('pocao')">
+                <canvas id="icon-pocao" width="32" height="32"></canvas><span id="lbl-pocoes" style="font-size: 8px; color: #b3e5fc;">5/5</span>
+            </button>
+            <button id="btn-fugir" class="action-btn" onclick="tentarFugir()">
+                <canvas id="icon-fugir" width="32" height="32"></canvas><span style="font-size: 8px; color: #ffcdd2;">Fugir</span>
+            </button>
+            <button id="btn-passar" class="action-btn" onclick="passarTurnoAtual()">
+                <canvas id="icon-passar" width="32" height="32"></canvas><span style="font-size: 8px; color: #cfd8dc;">FIM</span>
+            </button>
+        </div>
+        <div id="bars-container">
+            <div class="bar-wrapper">
+                <canvas id="icon-hp-bar" width="22" height="22"></canvas>
+                <div class="progress-bg"><div id="fill-hp" class="progress-fill"></div></div><strong id="text-hp" class="bar-text"></strong>
+            </div>
+            <div class="bar-wrapper">
+                <canvas id="icon-mp-bar" width="22" height="22"></canvas>
+                <div class="progress-bg"><div id="fill-mp" class="progress-fill"></div></div><strong id="text-mp" class="bar-text"></strong>
+            </div>
+            <div class="bar-wrapper">
+                <canvas id="icon-en-bar" width="22" height="22"></canvas>
+                <div class="progress-bg"><div id="fill-en" class="progress-fill"></div></div><strong id="text-en" class="bar-text"></strong>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+// --- SISTEMA DE AUDIO (WEB AUDIO API) ---
+let audioCtx = null;
+let somAtivado = true;
+let bgmInterval = null;
+
+function iniciarAudioContext() {
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
+    if (somAtivado && !bgmInterval) {
+        iniciarMusicaFundo();
+    }
+}
+
+function tocarSom(tipo) {
+    if (!somAtivado || !audioCtx) return;
+    try {
+        let osc = audioCtx.createOscillator();
+        let gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        let agora = audioCtx.currentTime;
+
+        if (tipo === 'click') {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(400, agora);
+            osc.frequency.exponentialRampToValueAtTime(800, agora + 0.05);
+            gain.gain.setValueAtTime(0.15, agora);
+            gain.gain.linearRampToValueAtTime(0.01, agora + 0.05);
+            osc.start(agora); osc.stop(agora + 0.05);
+        } else if (tipo === 'ataque') {
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(180, agora);
+            osc.frequency.exponentialRampToValueAtTime(50, agora + 0.15);
+            gain.gain.setValueAtTime(0.3, agora);
+            gain.gain.linearRampToValueAtTime(0.01, agora + 0.15);
+            osc.start(agora); osc.stop(agora + 0.15);
+        } else if (tipo === 'dano') {
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(120, agora);
+            osc.frequency.linearRampToValueAtTime(40, agora + 0.2);
+            gain.gain.setValueAtTime(0.35, agora);
+            gain.gain.linearRampToValueAtTime(0.01, agora + 0.2);
+            osc.start(agora); osc.stop(agora + 0.2);
+        } else if (tipo === 'magia') {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(300, agora);
+            osc.frequency.exponentialRampToValueAtTime(900, agora + 0.3);
+            gain.gain.setValueAtTime(0.2, agora);
+            gain.gain.linearRampToValueAtTime(0.01, agora + 0.3);
+            osc.start(agora); osc.stop(agora + 0.3);
+        } else if (tipo === 'pocao') {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(500, agora);
+            osc.frequency.linearRampToValueAtTime(1200, agora + 0.25);
+            gain.gain.setValueAtTime(0.2, agora);
+            gain.gain.linearRampToValueAtTime(0.01, agora + 0.25);
+            osc.start(agora); osc.stop(agora + 0.25);
+        } else if (tipo === 'vitoria') {
+            let notas = [330, 392, 659, 523];
+            notas.forEach((freq, idx) => {
+                let o = audioCtx.createOscillator();
+                let g = audioCtx.createGain();
+                o.connect(g); g.connect(audioCtx.destination);
+                o.frequency.value = freq;
+                g.gain.setValueAtTime(0.2, agora + idx * 0.15);
+                g.gain.linearRampToValueAtTime(0.01, agora + idx * 0.15 + 0.15);
+                o.start(agora + idx * 0.15); o.stop(agora + idx * 0.15 + 0.15);
+            });
+        } else if (tipo === 'derrota') {
+            let notas = [250, 200, 150, 100];
+            notas.forEach((freq, idx) => {
+                let o = audioCtx.createOscillator();
+                let g = audioCtx.createGain();
+                o.connect(g); g.connect(audioCtx.destination);
+                o.frequency.value = freq;
+                g.gain.setValueAtTime(0.25, agora + idx * 0.2);
+                g.gain.linearRampToValueAtTime(0.01, agora + idx * 0.2 + 0.2);
+                o.start(agora + idx * 0.2); o.stop(agora + idx * 0.2 + 0.2);
+            });
+        }
+    } catch(e) {}
+}
+
+function iniciarMusicaFundo() {
+    if (bgmInterval) return;
+    const notasCaverna = [110, 130.81, 146.83, 164.81, 196]; 
+    bgmInterval = setInterval(() => {
+        if (!somAtivado || !audioCtx) return;
+        try {
+            let osc = audioCtx.createOscillator();
+            let gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            osc.type = 'triangle';
+            let nota = notasCaverna[Math.floor(Math.random() * notasCaverna.length)];
+            osc.frequency.setValueAtTime(nota, audioCtx.currentTime);
+            
+            gain.gain.setValueAtTime(0.03, audioCtx.currentTime);
+            gain.gain.linearRampToValueAtTime(0.001, audioCtx.currentTime + 1.2);
+            
+            osc.start(audioCtx.currentTime);
+            osc.stop(audioCtx.currentTime + 1.2);
+        } catch(e) {}
+    }, 2500);
+}
+
+window.addEventListener('pointerdown', () => {
+    iniciarAudioContext();
+}, { once: true });
+
+
+const canvas = document.getElementById('battle-canvas');
+const ctx = canvas.getContext('2d');
+const hexRadius = 175;
+const gridOrigin = { x: 160, y: 500 };
+
+let ondaAtual = 1;
+const maxOndas = 5;
+
+let heroes = [
+  { id:'h1', name:'Herói Guerreiro', sigla:'G', col:0, row:5, hp:100, maxHp:100, mp:40, maxMp:40, energia:70, maxEnergia:70, atk:35, defFisica:20, defMagica:5, esquiva:5, range:1, type:'warrior', isHero:true, buffsAtivos: [], pocoes: 5, stunTurns: 0, skillForte:{nome:'Golpe Brutal', custoMp:15, custoEnergia:20, dano:60, tipoDano:'fisico', range:1, castTime:1.5} },
+  { id:'h2', name:'Herói Mago', sigla:'M', col:1, row:5, hp:85, maxHp:85, mp:100, maxMp:100, energia:70, maxEnergia:70, atk:45, defFisica:10, defMagica:30, esquiva:5, range:3, type:'mage', isHero:true, buffsAtivos: [], pocoes: 5, stunTurns: 0, skillForte:{nome:'Bola Fogo', custoMp:30, custoEnergia:20, dano:75, tipoDano:'magico', range:3, castTime:2.0} },
+  { id:'h3', name:'Herói Arqueiro', sigla:'A', col:2, row:5, hp:75, maxHp:75, mp:60, maxMp:60, energia:70, maxEnergia:70, atk:25, defFisica:8, defMagica:8, esquiva:20, range:2, type:'archer', isHero:true, buffsAtivos: [], pocoes: 5, stunTurns: 0, skillForte:{nome:'Tiro Preciso', custoMp:20, custoEnergia:20, dano:50, tipoDano:'fisico', range:3, castTime:1.2} }
+];
+
+const TEMPLATES_INIMIGOS = [
+  { type: 'warrior', name: 'Ogro Guerreiro', sigla: 'Og', range: 1, baseHp: 70, baseAtk: 20, defF: 15, defM: 5, esquiva: 0, skill: { nome: 'Puxão Brutal', custo: 15, range: 2, dano: 20, tipo: 'fisico' } },
+  { type: 'archer', name: 'Ogro Arqueiro', sigla: 'Oa', range: 3, baseHp: 40, baseAtk: 15, defF: 5, defM: 5, esquiva: 10, skill: { nome: 'Chuva de Flechas', custo: 15, range: 3, dano: 30, tipo: 'fisico' } },
+  { type: 'mage', name: 'Ogro Mago', sigla: 'Om', range: 3, baseHp: 50, baseAtk: 25, defF: 5, defM: 15, esquiva: 5, skill: { nome: 'Nuvem Venenosa', custo: 25, range: 3, dano: 40, tipo: 'magico' } },
+  { type: 'shaman', name: 'Ogro Chamã', sigla: 'Oc', range: 3, baseHp: 55, baseAtk: 20, defF: 5, defM: 20, esquiva: 5, skill: { nome: 'Raio Espiritual', custo: 20, range: 3, dano: 45, tipo: 'magico' } },
+  { type: 'barbarian', name: 'Ogro Bárbaro', sigla: 'Ob', range: 1, baseHp: 85, baseAtk: 28, defF: 5, defM: 5, esquiva: 5, skill: { nome: 'Fúria Sangrenta', custo: 15, range: 1, dano: 50, tipo: 'fisico' } },
+  { type: 'assassin', name: 'Ogro Assassino', sigla: 'Oas', range: 1, baseHp: 45, baseAtk: 30, defF: 5, defM: 5, esquiva: 25, skill: { nome: 'Lâmina Oculta', custo: 15, range: 1, dano: 55, tipo: 'fisico' } }
+];
+
+let enemies = [];
+let fugaGlobalJaOcorreu = false;
+let ordemTurnos = [];
+let indiceTurnoAtual = 0;
+let personagemSelecionado = null;
+let acaoPendente = null;
+let rangeAlvosValidos = [];
+let conjuracaoEmAndamento = false;
+let turnoAtual = 'jogador';
+let tempoRestante = 20;
+let relogio;
+let callbackModalAtual = null;
+
+let floatingTexts = [];
+let visualEffects = []; 
+let animFrameId = null;
+
+function adicionarTextoFlutuante(x, y, texto, cor = '#ff1744') {
+    floatingTexts.push({ x, y, texto, cor, life: 1.0, vy: -2.2 });
+    iniciarLoopAnimacao();
+}
+
+function adicionarEfeitoVisual(x, y, tipo) {
+    if (tipo === 'slash') {
+        for (let i = 0; i < 18; i++) {
+            let ang = Math.random() * Math.PI * 2;
+            let spd = Math.random() * 8 + 4;
+            visualEffects.push({ x, y, vx: Math.cos(ang)*spd, vy: Math.sin(ang)*spd, cor: '#ff3d00', life: 1.0, tipo: 'particle', size: Math.random() * 6 + 3 });
+        }
+    } else if (tipo === 'magic' || tipo === 'buff') {
+        for (let i = 0; i < 22; i++) {
+            let ang = Math.random() * Math.PI * 2;
+            let spd = Math.random() * 6 + 2;
+            visualEffects.push({ x, y, vx: Math.cos(ang)*spd, vy: Math.sin(ang)*spd, cor: tipo === 'buff' ? '#00e676' : '#00e5ff', life: 1.0, tipo: 'particle', size: Math.random() * 7 + 3 });
+        }
+    } else if (tipo === 'heal' || tipo === 'pocao') {
+        for (let i = 0; i < 16; i++) {
+            visualEffects.push({ x, y: y - (i * 4), vx: (Math.random() - 0.5) * 3, vy: -Math.random() * 4 - 2, cor: '#10b981', life: 1.0, tipo: 'particle', size: 5 });
+        }
+    }
+    iniciarLoopAnimacao();
+}
+
+function iniciarLoopAnimacao() { if (!animFrameId) loopAnimacao(); }
+
+function loopAnimacao() {
+    renderGame();
+    if (floatingTexts.length > 0 || visualEffects.length > 0) animFrameId = requestAnimationFrame(loopAnimacao);
+    else animFrameId = null;
+}
+
+function atualizarEDesenharTextosFlutuantes() {
+    for (let i = visualEffects.length - 1; i >= 0; i--) {
+        let vf = visualEffects[i];
+        vf.x += vf.vx; vf.y += vf.vy; vf.life -= 0.035;
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, vf.life);
+        ctx.fillStyle = vf.cor;
+        ctx.beginPath();
+        ctx.arc(vf.x, vf.y, vf.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        if (vf.life <= 0) visualEffects.splice(i, 1);
+    }
+
+    for (let i = floatingTexts.length - 1; i >= 0; i--) {
+        let ft = floatingTexts[i];
+        ft.y += ft.vy; ft.life -= 0.025;
+        ctx.save(); 
+        ctx.globalAlpha = Math.max(0, ft.life); 
+        ctx.font = '900 42px Segoe UI, sans-serif'; 
+        ctx.textAlign = 'center'; 
+        ctx.lineWidth = 5; 
+        ctx.strokeStyle = '#000000'; 
+        ctx.strokeText(ft.texto, ft.x, ft.y); 
+        ctx.fillStyle = ft.cor; 
+        ctx.fillText(ft.texto, ft.x, ft.y); 
+        ctx.restore();
+        if (ft.life <= 0) floatingTexts.splice(i, 1);
+    }
+}
+
+function toggleFullScreen(){ if(!document.fullscreenElement) document.documentElement.requestFullscreen().catch(err=>{}); else if(document.exitFullscreen) document.exitFullscreen(); }
+document.addEventListener("fullscreenchange", ()=>{ document.getElementById('fullscreen-btn').style.display = document.fullscreenElement ? "none" : "block"; });
+
+function mostrarAviso(mensagem, tipo='erro'){
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div'); toast.className = `toast ${tipo}`; toast.innerText = mensagem; container.appendChild(toast);
+    setTimeout(()=>{ if(toast.parentElement) toast.remove(); }, 2200);
+}
+
+function abrirModal(titulo, texto, tipoBotoes, callback){
+    const overlay = document.getElementById('modal-overlay'); document.getElementById('modal-title').innerText = titulo; document.getElementById('modal-text').innerText = texto; const btnGroup = document.getElementById('modal-buttons'); callbackModalAtual = callback;
+    if(tipoBotoes === 'sim-nao') btnGroup.innerHTML = `<button class="modal-btn confirm" onclick="fecharModal(true)">Sim</button><button class="modal-btn cancel" onclick="fecharModal(false)">Não</button>`;
+    else btnGroup.innerHTML = `<button class="modal-btn confirm" onclick="fecharModal(true)">OK</button>`;
+    overlay.style.display = 'flex';
+}
+function fecharModal(resultado){ document.getElementById('modal-overlay').style.display = 'none'; if(callbackModalAtual){ let cb = callbackModalAtual; callbackModalAtual = null; cb(resultado); } }
+
+function criarInimigoFromTemplate(t, id, col, row, onda) {
+    let hpEscalado = t.baseHp + (onda * 15);
+    return {
+        id: id, name: t.name, sigla: t.sigla, col: col, row: row,
+        hp: hpEscalado, maxHp: hpEscalado,
+        mp: 80, maxMp: 80, energia: 70, maxEnergia: 70,
+        atk: t.baseAtk + (onda * 4),
+        defFisica: t.defF, defMagica: t.defM, esquiva: t.esquiva,
+        range: t.range, type: t.type, isHero: false, isBoss: false,
+        buffsAtivos: [], pocoes: 2, jaTentouFugir: false,
+        skillForte: { nome: t.skill.nome, custoMp: t.skill.custo, custoEnergia: 20, dano: t.skill.dano + (onda * 5), tipoDano: t.skill.tipo, range: t.skill.range, castTime: 1.0 }
+    };
+}
+
+function carregarInimigosOnda(){
+    enemies = [];
+    if(ondaAtual === maxOndas){
+        let templateBoss = TEMPLATES_INIMIGOS[Math.floor(Math.random() * TEMPLATES_INIMIGOS.length)];
+        let baseLifeEscalado = templateBoss.baseHp + (ondaAtual * 15);
+        let bossHp = baseLifeEscalado * 3;
+        let boss = {
+            id: 'boss1', name: templateBoss.name + ' (Boss)', sigla: 'B', col: 1, row: 0,
+            hp: bossHp, maxHp: bossHp, mp: 150, maxMp: 150, energia: 100, maxEnergia: 100,
+            atk: templateBoss.baseAtk * 1.5, defFisica: templateBoss.defF * 1.5, defMagica: templateBoss.defM * 1.5,
+            esquiva: templateBoss.esquiva, range: templateBoss.range, type: templateBoss.type, isHero: false,
+            isBoss: true, buffsAtivos: [], pocoes: 5, jaTentouFugir: true,
+            skillForte: { nome: templateBoss.skill.nome + ' Mortal', custoMp: templateBoss.skill.custo, custoEnergia: 20, dano: templateBoss.skill.dano * 1.5, tipoDano: templateBoss.skill.tipo, range: templateBoss.skill.range, castTime: 1.2 },
+            skillEspecial: { nome: 'Golpe Apocalíptico', custoMp: 30, custoEnergia: 30, range: 3, dano: 65, tipoDano: 'magico', castTime: 1.5 }
+        };
+        enemies.push(boss);
+
+        for(let i=0; i<2; i++){
+            let c = (i===0) ? 0 : 2;
+            let temp = TEMPLATES_INIMIGOS[Math.floor(Math.random() * TEMPLATES_INIMIGOS.length)];
+            enemies.push(criarInimigoFromTemplate(temp, `lacaio${i}`, c, 0, ondaAtual));
+        }
+    } else {
+        let qtd = (ondaAtual === 1 || ondaAtual === 2) ? 3 : (ondaAtual === 3 ? 4 : 5);
+        let posicoes = [ {c:0,r:0}, {c:1,r:0}, {c:2,r:0}, {c:0,r:1}, {c:2,r:1} ];
+        
+        for(let i=0; i<qtd; i++){
+            let temp = TEMPLATES_INIMIGOS[Math.floor(Math.random() * TEMPLATES_INIMIGOS.length)];
+            enemies.push(criarInimigoFromTemplate(temp, `e${i}`, posicoes[i].c, posicoes[i].r, ondaAtual));
+        }
+    }
+}
+
+function iniciarBatalha(){
+    ondaAtual = 1; fugaGlobalJaOcorreu = false;
+    heroes[0].col = 0; heroes[0].row = 5; heroes[1].col = 1; heroes[1].row = 5; heroes[2].col = 2; heroes[2].row = 5;
+    heroes.forEach(h => { h.hp = h.maxHp; h.mp = h.maxMp; h.energia = h.maxEnergia; h.pocoes = 5; h.stunTurns = 0; h.buffsAtivos = []; });
+    carregarInimigosOnda();
+    ordemTurnos = [...heroes, ...enemies];
+    indiceTurnoAtual = 0;
+    iniciarProximoTurno();
+}
+
+function iniciarProximoTurno(){
+    if(enemies.every(e => e.hp <= 0)){
+        if(ondaAtual < maxOndas){
+            ondaAtual++;
+            heroes[0].col = 0; heroes[0].row = 5; heroes[1].col = 1; heroes[1].row = 5; heroes[2].col = 2; heroes[2].row = 5;
+            heroes.forEach(h => { h.hp = h.maxHp; h.mp = h.maxMp; h.energia = h.maxEnergia; h.pocoes = 5; h.stunTurns = 0; h.buffsAtivos = []; });
+            tocarSom('vitoria');
+            mostrarAviso(`Onda ${ondaAtual} iniciada! Cuidado!`, "sucesso");
+            carregarInimigosOnda();
+            ordemTurnos = [...heroes, ...enemies];
+            indiceTurnoAtual = 0;
+        } else {
+            tocarSom('vitoria');
+            abrirModal("Vitória Absoluta!", "Parabéns! Você derrotou todas as ondas e o Boss final!", "ok", () => { location.reload(); });
+            return;
+        }
+    }
+
+    if(indiceTurnoAtual >= ordemTurnos.length) indiceTurnoAtual = 0;
+    const atual = ordemTurnos[indiceTurnoAtual];
+    if(!atual || atual.hp <= 0){ indiceTurnoAtual++; iniciarProximoTurno(); return; }
+
+    personagemSelecionado = atual;
+    personagemSelecionado.energia = personagemSelecionado.maxEnergia;
+
+    if (atual.isHero && atual.stunTurns > 0) {
+        atual.stunTurns--;
+        tocarSom('dano');
+        mostrarAviso(`${atual.name} está atordoado e perde o turno!`, "aviso");
+        setTimeout(() => { passarTurnoAtual(); }, 1000);
+        return;
+    }
+    if (atual.buffsAtivos && atual.buffsAtivos.length > 0) { atual.buffsAtivos.forEach(b => b.turnosRestantes--); atual.buffsAtivos = atual.buffsAtivos.filter(b => b.turnosRestantes > 0); }
+
+    acaoPendente = null; rangeAlvosValidos = [];
+
+    // Gerencia visibilidade da barra de skills inferior e do painel do inimigo
+    const actionsMenu = document.getElementById('actions-menu');
+    const enemyTurnIndicator = document.getElementById('enemy-turn-indicator');
+
+    if(atual.isHero){
+        turnoAtual = 'jogador'; tempoRestante = 20; clearInterval(relogio);
+        if(actionsMenu) actionsMenu.style.display = 'grid'; // Exibe as skills no turno do herói
+        if(enemyTurnIndicator) enemyTurnIndicator.style.display = 'none'; // Oculta o indicador de turno do inimigo
+        relogio = setInterval(()=>{
+            tempoRestante--; document.getElementById('hud-timer').innerText = tempoRestante + "s";
+            if(tempoRestante <= 5) document.getElementById('hud-timer').style.color = "#ef9a9a"; else document.getElementById('hud-timer').style.color = "#ffd700";
+            if(tempoRestante <= 0) passarTurnoAtual();
+        }, 1000);
+        atualizarHUD(); atualizarTimeline(); renderGame();
+    } else {
+        turnoAtual = 'inimigo'; clearInterval(relogio); document.getElementById('hud-timer').innerText = "--"; 
+        if(actionsMenu) actionsMenu.style.display = 'none'; // Oculta as skills no turno inimigo
+        if(enemyTurnIndicator) {
+            enemyTurnIndicator.style.display = 'flex'; // Exibe o indicador de turno do inimigo
+            document.getElementById('enemy-turn-name-txt').innerText = atual.name;
+        }
+        atualizarTimeline(); renderGame();
+        setTimeout(()=>{ executarTurnoInimigoInteligente(atual); }, 1000);
+    }
+}
+
+function passarTurnoAtual(){
+    if(conjuracaoEmAndamento) return;
+    tocarSom('click');
+    acaoPendente = null; rangeAlvosValidos = []; clearInterval(relogio);
+    indiceTurnoAtual++; iniciarProximoTurno();
+}
+
+function verificarFimDeTurnoAutomatico(){
+    if(enemies.every(e => e.hp <= 0)) return;
+    if(personagemSelecionado && personagemSelecionado.isHero && personagemSelecionado.energia < 15){
+        acaoPendente = null; rangeAlvosValidos = []; setTimeout(()=>{ passarTurnoAtual(); }, 600);
+    }
+}
+
+function desenharMiniRosto(cCtx, tipo, ehHeroi) {
+    cCtx.clearRect(0, 0, 52, 52); cCtx.save(); cCtx.translate(26, 38); cCtx.scale(2.2, 2.2); cCtx.lineWidth = 1; cCtx.strokeStyle = '#111';
+
+    if (ehHeroi) {
+        cCtx.fillStyle = '#ffcc80'; cCtx.fillRect(-5, -10, 10, 10); cCtx.strokeRect(-5, -10, 10, 10);
+        cCtx.fillStyle = '#111'; cCtx.fillRect(-2.5, -7, 1.2, 1.2); cCtx.fillRect(1.5, -7, 1.2, 1.2);
+        cCtx.fillStyle = 'rgba(255, 120, 150, 0.4)'; cCtx.beginPath(); cCtx.arc(-3, -3.5, 1, 0, Math.PI*2); cCtx.fill(); cCtx.beginPath(); cCtx.arc(3, -3.5, 1, 0, Math.PI*2); cCtx.fill();
+        cCtx.strokeStyle = '#111'; cCtx.lineWidth = 0.6; cCtx.beginPath(); cCtx.arc(0, -3.5, 1.5, 0.2, Math.PI - 0.2); cCtx.stroke();
+        cCtx.lineWidth = 1;
+        if (tipo === 'warrior') { cCtx.fillStyle = '#b0bec5'; cCtx.fillRect(-7, -13, 14, 5); cCtx.strokeRect(-7, -13, 14, 5); cCtx.fillStyle = '#ffb300'; cCtx.fillRect(-2, -16, 4, 4); cCtx.strokeRect(-2, -16, 4, 4); }
+        else if (tipo === 'mage') { cCtx.fillStyle = '#311b92'; cCtx.beginPath(); cCtx.moveTo(0, -20); cCtx.lineTo(-7, -9); cCtx.lineTo(7, -9); cCtx.closePath(); cCtx.fill(); cCtx.stroke(); cCtx.fillStyle = '#4a148c'; cCtx.fillRect(-8, -10, 16, 2.5); cCtx.strokeRect(-8, -10, 16, 2.5); }
+        else { cCtx.fillStyle = '#1b5e20'; cCtx.beginPath(); cCtx.moveTo(0, -17); cCtx.lineTo(-7, -9); cCtx.lineTo(7, -9); cCtx.closePath(); cCtx.fill(); cCtx.stroke(); cCtx.fillStyle = '#d32f2f'; cCtx.beginPath(); cCtx.moveTo(2, -13); cCtx.lineTo(7, -20); cCtx.lineTo(4, -11); cCtx.closePath(); cCtx.fill(); }
+    } else {
+        let headColor = '#689f38'; if(tipo === 'barbarian') headColor = '#d84315'; if(tipo === 'shaman') headColor = '#00796b'; if(tipo === 'assassin') headColor = '#424242';
+        cCtx.fillStyle = headColor; cCtx.fillRect(-6, -11, 12, 10); cCtx.strokeRect(-6, -11, 12, 10);
+        let eyeColor = tipo === 'assassin' ? '#ff1744' : '#111';
+        cCtx.fillStyle = eyeColor; cCtx.fillRect(-3, -8, 1.5, 1.5); cCtx.fillRect(1.5, -8, 1.5, 1.5);
+        cCtx.strokeStyle = '#b71c1c'; cCtx.lineWidth = 1; cCtx.beginPath(); cCtx.moveTo(-3, -10); cCtx.lineTo(-0.5, -9); cCtx.moveTo(3, -10); cCtx.lineTo(0.5, -9); cCtx.stroke();
+        cCtx.fillStyle = '#fff'; cCtx.fillRect(-3, -3, 1.5, 2); cCtx.fillRect(1.5, -3, 1.5, 2);
+        
+        let hatColor = '#37474f'; if(tipo === 'shaman') hatColor = '#004d40'; if(tipo === 'assassin') hatColor = '#212121';
+        cCtx.fillStyle = hatColor; cCtx.fillRect(-7, -14, 14, 4); cCtx.strokeRect(-7, -14, 14, 4);
+        cCtx.fillStyle = '#d7ccc8'; cCtx.beginPath(); cCtx.moveTo(-6, -13); cCtx.lineTo(-9, -18); cCtx.lineTo(-4, -13); cCtx.closePath(); cCtx.fill(); cCtx.stroke();
+        cCtx.beginPath(); cCtx.moveTo(6, -13); cCtx.lineTo(9, -18); cCtx.lineTo(4, -13); cCtx.closePath(); cCtx.fill(); cCtx.stroke();
+    }
+    cCtx.restore();
+}
+
+function atualizarTimeline(){
+    const timeline = document.getElementById('turn-timeline'); timeline.innerHTML = '';
+    ordemTurnos.forEach((ent, index)=>{
+        if(!ent || ent.hp <= 0) return;
+        const el = document.createElement('div'); const isAtivo = (index === indiceTurnoAtual);
+        el.className = `timeline-avatar ${ent.isHero ? 'hero' : 'enemy'} ${isAtivo ? 'active' : ''}`; el.style.opacity = isAtivo ? '1' : '0.65';
+        const miniCanvas = document.createElement('canvas'); miniCanvas.width = 52; miniCanvas.height = 52; const miniCtx = miniCanvas.getContext('2d');
+        desenharMiniRosto(miniCtx, ent.type, ent.isHero); el.appendChild(miniCanvas); timeline.appendChild(el);
+    });
+}
+
+function desenharIconesHUD(){
+    if(!personagemSelecionado || !personagemSelecionado.isHero) return; const tipo = personagemSelecionado.type;
+    desenharIcone('icon-basica', 'basica', tipo); desenharIcone('icon-forte', 'forte', tipo); desenharIcone('icon-buff', 'buff', tipo); desenharIcone('icon-pocao', 'pocao', tipo); desenharIcone('icon-fugir', 'fugir', tipo); desenharIcone('icon-passar', 'passar', tipo);
+    desenharIconeBarra('icon-hp-bar', 'hp'); desenharIconeBarra('icon-mp-bar', 'mp'); desenharIconeBarra('icon-en-bar', 'en');
+}
+
+function desenharIconeBarra(idCanvas, tipo){
+    const cv = document.getElementById(idCanvas); if(!cv) return; const bCtx = cv.getContext('2d'); bCtx.clearRect(0,0,22,22); bCtx.save(); bCtx.lineWidth = 1.2; bCtx.strokeStyle = '#111';
+    if(tipo === 'hp'){
+        let grad = bCtx.createLinearGradient(0, 0, 22, 22); grad.addColorStop(0, '#ff5252'); grad.addColorStop(1, '#b71c1c'); bCtx.fillStyle = grad;
+        bCtx.beginPath(); bCtx.moveTo(11, 19); bCtx.bezierCurveTo(2, 12, 1, 5, 6.5, 3); bCtx.bezierCurveTo(9.5, 2, 11, 6, 11, 6); bCtx.bezierCurveTo(11, 6, 12.5, 2, 15.5, 3); bCtx.bezierCurveTo(21, 5, 20, 12, 11, 19); bCtx.closePath(); bCtx.fill(); bCtx.stroke();
+        bCtx.fillStyle = 'rgba(255, 255, 255, 0.6)'; bCtx.beginPath(); bCtx.arc(6.5, 5.5, 1.5, 0, Math.PI*2); bCtx.fill();
+    } else if(tipo === 'mp'){
+        let grad = bCtx.createLinearGradient(0, 0, 22, 22); grad.addColorStop(0, '#40c4ff'); grad.addColorStop(1, '#0d47a1'); bCtx.fillStyle = grad;
+        bCtx.beginPath(); bCtx.moveTo(11, 2); bCtx.lineTo(19, 11); bCtx.lineTo(11, 20); bCtx.lineTo(3, 11); bCtx.closePath(); bCtx.fill(); bCtx.stroke();
+        bCtx.strokeStyle = 'rgba(255,255,255,0.6)'; bCtx.lineWidth = 1; bCtx.beginPath(); bCtx.moveTo(11, 2); bCtx.lineTo(11, 20); bCtx.moveTo(3, 11); bCtx.lineTo(19, 11); bCtx.stroke();
+    } else if(tipo === 'en'){
+        let grad = bCtx.createLinearGradient(0, 0, 22, 22); grad.addColorStop(0, '#ffff00'); grad.addColorStop(1, '#f57f17'); bCtx.fillStyle = grad;
+        bCtx.beginPath(); bCtx.moveTo(13, 2); bCtx.lineTo(5, 11); bCtx.lineTo(11, 11); bCtx.lineTo(9, 20); bCtx.lineTo(17, 10); bCtx.lineTo(11, 10); bCtx.closePath(); bCtx.fill(); bCtx.stroke();
+    }
+    bCtx.restore();
+}
+
+function desenharIcone(idCanvas, acao, tipoClasse){
+    const icCanvas = document.getElementById(idCanvas); if(!icCanvas) return; const iCtx = icCanvas.getContext('2d'); iCtx.clearRect(0,0,32,32); iCtx.save(); iCtx.lineWidth = 1.2; iCtx.strokeStyle = '#111';
+    if(acao === 'basica'){
+        if(tipoClasse === 'warrior'){ iCtx.fillStyle = '#eceff1'; iCtx.beginPath(); iCtx.moveTo(6, 26); iCtx.lineTo(24, 8); iCtx.lineTo(26, 6); iCtx.lineTo(24, 6); iCtx.lineTo(20, 10); iCtx.closePath(); iCtx.fill(); iCtx.stroke(); iCtx.fillStyle = '#ffb300'; iCtx.fillRect(7, 21, 8, 3); iCtx.strokeRect(7, 21, 8, 3); iCtx.fillStyle = '#5d4037'; iCtx.fillRect(5, 25, 4, 4); iCtx.strokeRect(5, 25, 4, 4); }
+        else if(tipoClasse === 'mage'){ let grad = iCtx.createRadialGradient(16, 16, 2, 16, 16, 12); grad.addColorStop(0, '#ffffff'); grad.addColorStop(0.5, '#00e5ff'); grad.addColorStop(1, '#0288d1'); iCtx.fillStyle = grad; iCtx.beginPath(); iCtx.arc(16, 16, 10, 0, Math.PI*2); iCtx.fill(); iCtx.stroke(); iCtx.fillStyle = '#fff'; iCtx.fillRect(14, 6, 4, 2); iCtx.fillRect(14, 24, 4, 2); iCtx.fillRect(6, 14, 2, 4); iCtx.fillRect(24, 14, 2, 4); }
+        else { iCtx.strokeStyle = '#795548'; iCtx.lineWidth = 2.5; iCtx.beginPath(); iCtx.arc(12, 16, 12, -Math.PI/2, Math.PI/2); iCtx.stroke(); iCtx.strokeStyle = '#fff'; iCtx.lineWidth = 1; iCtx.beginPath(); iCtx.moveTo(12, 4); iCtx.lineTo(12, 28); iCtx.stroke(); iCtx.fillStyle = '#d7ccc8'; iCtx.fillRect(6, 15, 18, 2); iCtx.fillStyle = '#d32f2f'; iCtx.beginPath(); iCtx.moveTo(24, 13); iCtx.lineTo(28, 16); iCtx.lineTo(24, 19); iCtx.closePath(); iCtx.fill(); }
+    } else if(acao === 'forte'){
+        if(tipoClasse === 'warrior'){ let gradGlow = iCtx.createRadialGradient(16, 16, 2, 16, 16, 14); gradGlow.addColorStop(0, '#ffffff'); gradGlow.addColorStop(0.4, '#ffeb3b'); gradGlow.addColorStop(1, '#d32f2f'); iCtx.fillStyle = gradGlow; iCtx.beginPath(); iCtx.arc(16, 16, 12, 0, Math.PI*2); iCtx.fill(); iCtx.strokeStyle = '#ffffff'; iCtx.lineWidth = 3.5; iCtx.beginPath(); iCtx.arc(16, 16, 8, -Math.PI/4, Math.PI*0.75); iCtx.stroke(); iCtx.strokeStyle = '#ff1744'; iCtx.lineWidth = 2; iCtx.beginPath(); iCtx.moveTo(6, 6); iCtx.lineTo(26, 26); iCtx.stroke(); iCtx.fillStyle = '#fff'; iCtx.fillRect(14, 14, 4, 4); }
+        else if(tipoClasse === 'mage'){ let grad = iCtx.createRadialGradient(18, 14, 2, 18, 14, 11); grad.addColorStop(0, '#ffff80'); grad.addColorStop(0.4, '#ff9100'); grad.addColorStop(1, '#dd2c00'); iCtx.fillStyle = grad; iCtx.beginPath(); iCtx.arc(18, 14, 10, 0, Math.PI*2); iCtx.fill(); iCtx.stroke(); iCtx.fillStyle = '#ff6d00'; iCtx.beginPath(); iCtx.moveTo(10, 18); iCtx.lineTo(4, 28); iCtx.lineTo(14, 24); iCtx.closePath(); iCtx.fill(); }
+        else { iCtx.fillStyle = '#ff1744'; iCtx.beginPath(); iCtx.arc(16, 16, 12, 0, Math.PI*2); iCtx.fill(); iCtx.stroke(); iCtx.fillStyle = '#fff'; iCtx.beginPath(); iCtx.arc(16, 16, 8, 0, Math.PI*2); iCtx.fill(); iCtx.fillStyle = '#ff1744'; iCtx.beginPath(); iCtx.arc(16, 16, 4, 0, Math.PI*2); iCtx.fill(); }
+    } else if(acao === 'buff'){
+        if(tipoClasse === 'warrior'){ iCtx.fillStyle = '#b0bec5'; iCtx.beginPath(); iCtx.moveTo(6, 6); iCtx.lineTo(26, 6); iCtx.lineTo(26, 18); iCtx.lineTo(16, 28); iCtx.lineTo(6, 18); iCtx.closePath(); iCtx.fill(); iCtx.stroke(); iCtx.fillStyle = '#ffb300'; iCtx.fillRect(14, 8, 4, 16); iCtx.fillRect(8, 12, 16, 4); }
+        else if(tipoClasse === 'mage'){ iCtx.fillStyle = 'rgba(41, 182, 246, 0.6)'; iCtx.beginPath(); iCtx.moveTo(16, 4); iCtx.lineTo(28, 16); iCtx.lineTo(16, 28); iCtx.lineTo(4, 16); iCtx.closePath(); iCtx.fill(); iCtx.stroke(); iCtx.strokeStyle = '#80d8ff'; iCtx.lineWidth = 1.5; iCtx.beginPath(); iCtx.arc(16, 16, 6, 0, Math.PI*2); iCtx.stroke(); }
+        else { iCtx.fillStyle = '#81c784'; iCtx.beginPath(); iCtx.moveTo(6, 20); iCtx.lineTo(22, 20); iCtx.lineTo(26, 12); iCtx.lineTo(18, 12); iCtx.closePath(); iCtx.fill(); iCtx.stroke(); iCtx.strokeStyle = '#b9f6ca'; iCtx.lineWidth = 2; iCtx.beginPath(); iCtx.moveTo(4, 8); iCtx.lineTo(24, 8); iCtx.moveTo(8, 26); iCtx.lineTo(28, 26); iCtx.stroke(); }
+    } else if(acao === 'pocao'){
+        iCtx.fillStyle = '#81d4fa'; iCtx.fillRect(13, 4, 6, 4); iCtx.strokeRect(13, 4, 6, 4); iCtx.fillStyle = '#d50000'; iCtx.beginPath(); iCtx.arc(16, 18, 10, 0, Math.PI*2); iCtx.fill(); iCtx.stroke(); iCtx.fillStyle = '#ff8a80'; iCtx.beginPath(); iCtx.arc(13, 15, 3, 0, Math.PI*2); iCtx.fill();
+    } else if(acao === 'fugir'){
+        iCtx.strokeStyle = '#00e5ff'; iCtx.lineWidth = 2; iCtx.beginPath(); iCtx.moveTo(2, 8); iCtx.lineTo(14, 8); iCtx.moveTo(4, 16); iCtx.lineTo(18, 16); iCtx.moveTo(2, 24); iCtx.lineTo(12, 24); iCtx.stroke();
+        iCtx.fillStyle = '#ffb74d'; iCtx.beginPath(); iCtx.moveTo(14, 6); iCtx.lineTo(28, 16); iCtx.lineTo(14, 26); iCtx.lineTo(18, 16); iCtx.closePath(); iCtx.fill(); iCtx.stroke();
+        iCtx.fillStyle = '#ffffff'; iCtx.beginPath(); iCtx.moveTo(18, 12); iCtx.lineTo(24, 16); iCtx.lineTo(18, 20); iCtx.closePath(); iCtx.fill();
+    } else if(acao === 'passar'){
+        iCtx.fillStyle = '#ffd700'; iCtx.beginPath(); iCtx.moveTo(6, 8); iCtx.lineTo(16, 16); iCtx.lineTo(6, 24); iCtx.closePath(); iCtx.fill(); iCtx.stroke();
+        iCtx.beginPath(); iCtx.moveTo(16, 8); iCtx.lineTo(26, 16); iCtx.lineTo(16, 24); iCtx.closePath(); iCtx.fill(); iCtx.stroke();
+    }
+    iCtx.restore();
+}
+
+function atualizarHUD(){
+    if(personagemSelecionado && personagemSelecionado.isHero){
+        document.getElementById('fill-hp').style.width = `${(personagemSelecionado.hp/personagemSelecionado.maxHp)*100}%`; document.getElementById('text-hp').innerText = `${personagemSelecionado.hp}/${personagemSelecionado.maxHp}`;
+        document.getElementById('fill-mp').style.width = `${(personagemSelecionado.mp/personagemSelecionado.maxMp)*100}%`; document.getElementById('text-mp').innerText = `${personagemSelecionado.mp}/${personagemSelecionado.maxMp}`;
+        document.getElementById('fill-en').style.width = `${(personagemSelecionado.energia/personagemSelecionado.maxEnergia)*100}%`; document.getElementById('text-en').innerText = `${personagemSelecionado.energia}/${personagemSelecionado.maxEnergia}`;
+        document.getElementById('lbl-skill-nome').innerText = personagemSelecionado.skillForte.nome; document.getElementById('lbl-pocoes').innerText = `${personagemSelecionado.pocoes}/5`;
+        desenharIconesHUD();
+        ['basica','forte','buff','pocao','fugir','passar'].forEach(act => {
+            const btn = document.getElementById(`btn-${act}`);
+            if(btn) { if(acaoPendente === act) btn.classList.add('selected'); else btn.classList.remove('selected'); }
+        });
+    }
+}
+
+function desenharFundoCenario() {
+    let gradBase = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    gradBase.addColorStop(0, '#060908'); gradBase.addColorStop(0.5, '#0b100e'); gradBase.addColorStop(1, '#050706');
+    ctx.fillStyle = gradBase; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.45)'; ctx.lineWidth = 5;
+    for(let i = 80; i < canvas.width; i += 160) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i - 30, canvas.height * 0.5); ctx.lineTo(i + 20, canvas.height); ctx.stroke(); }
+    ctx.fillStyle = 'rgba(46, 125, 50, 0.22)'; ctx.beginPath(); ctx.arc(140, 400, 180, 0, Math.PI * 2); ctx.arc(940, 900, 220, 0, Math.PI * 2); ctx.arc(180, 1700, 200, 0, Math.PI * 2); ctx.fill();
+    let centroX = canvas.width / 2; let centroY = canvas.height / 2;
+    let gradLuzCentro = ctx.createRadialGradient(centroX, centroY, 50, centroX, centroY, 900);
+    gradLuzCentro.addColorStop(0, 'rgba(45, 60, 50, 0.95)'); gradLuzCentro.addColorStop(0.35, 'rgba(25, 40, 32, 0.7)'); gradLuzCentro.addColorStop(0.7, 'rgba(10, 16, 14, 0.4)'); gradLuzCentro.addColorStop(1, 'rgba(3, 5, 4, 0.92)');
+    ctx.fillStyle = gradLuzCentro; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    let tochasCoords = [ {x: 70, y: 350}, {x: 1010, y: 500}, {x: 90, y: 1150}, {x: 990, y: 1350}, {x: 80, y: 1950}, {x: 1000, y: 2100} ];
+    tochasCoords.forEach(t => {
+        let gradLuz = ctx.createRadialGradient(t.x, t.y, 10, t.x, t.y, 380);
+        gradLuz.addColorStop(0, 'rgba(255, 150, 20, 0.35)'); gradLuz.addColorStop(0.4, 'rgba(255, 80, 0, 0.12)'); gradLuz.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = gradLuz; ctx.beginPath(); ctx.arc(t.x, t.y, 380, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#1c1512'; ctx.fillRect(t.x - 8, t.y - 15, 16, 30); ctx.strokeRect(t.x - 8, t.y - 15, 16, 30);
+        let gradChama = ctx.createRadialGradient(t.x, t.y - 22, 2, t.x, t.y - 25, 14);
+        gradChama.addColorStop(0, '#ffffff'); gradChama.addColorStop(0.4, '#ffeb3b'); gradChama.addColorStop(1, '#ff3d00');
+        ctx.fillStyle = gradChama; ctx.beginPath(); ctx.arc(t.x, t.y - 25, 12, 0, Math.PI * 2); ctx.fill();
+    });
+}
+
+function desenharPersonagemCustomizado(x, y, tipo, nome, hp, maxHp, ehHeroi, isBoss = false) {
+    ctx.save(); ctx.translate(x, y + 10);
+    let escala = isBoss ? 6.2 : 4.4;
+    
+    if (isBoss) {
+        ctx.save();
+        let gradAura = ctx.createRadialGradient(0, -10, 20, 0, -10, 80);
+        gradAura.addColorStop(0, 'rgba(168, 85, 247, 0.7)'); gradAura.addColorStop(0.5, 'rgba(126, 34, 206, 0.35)'); gradAura.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = gradAura; ctx.beginPath(); ctx.arc(0, -10, 80, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+    }
+
+    ctx.scale(escala, escala);
+    let larguraCorpo = ehHeroi ? 16 : 20;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)'; ctx.fillRect(-larguraCorpo / 2 - 1, 2, larguraCorpo + 2, 12);
+    ctx.lineWidth = 1.1; ctx.strokeStyle = '#111';
+
+    if (ehHeroi) {
+        if (tipo === 'warrior') {
+            ctx.fillStyle = '#37474f'; ctx.fillRect(-8, -16, 16, 26); ctx.strokeRect(-8, -16, 16, 26);
+            ctx.fillStyle = '#90a4ae'; ctx.fillRect(-8, -16, 16, 18); ctx.strokeRect(-8, -16, 16, 18);
+            ctx.fillStyle = '#ffd700'; ctx.fillRect(-8, -16, 16, 3); ctx.fillRect(-2, -13, 4, 12);
+            ctx.fillStyle = '#cfd8dc'; ctx.fillRect(-12, -16, 5, 7); ctx.strokeRect(-12, -16, 5, 7); ctx.fillRect(7, -16, 5, 7); ctx.strokeRect(7, -16, 5, 7);
+            ctx.fillStyle = '#eceff1'; ctx.fillRect(10, -22, 3, 26); ctx.strokeRect(10, -22, 3, 26);
+            ctx.fillStyle = '#ffd700'; ctx.fillRect(7, -6, 9, 3); ctx.strokeRect(7, -6, 9, 3);
+            ctx.fillStyle = '#5d4037'; ctx.fillRect(10.5, -3, 2, 5); ctx.strokeRect(10.5, -3, 2, 5);
+        } else if (tipo === 'mage') {
+            ctx.fillStyle = '#311b92'; ctx.fillRect(-8, -16, 16, 26); ctx.strokeRect(-8, -16, 16, 26);
+            ctx.fillStyle = '#7b1fa2'; ctx.fillRect(-5, -13, 10, 23); ctx.strokeRect(-5, -13, 10, 23);
+            ctx.fillStyle = '#ffd700'; ctx.fillRect(-8, 8, 16, 2);
+            ctx.fillStyle = '#5d4037'; ctx.fillRect(-12, -26, 3, 38); ctx.strokeRect(-12, -26, 3, 38);
+            let gradGema = ctx.createRadialGradient(-10.5, -28, 1, -10.5, -28, 5); gradGema.addColorStop(0, '#ffffff'); gradGema.addColorStop(1, '#00e5ff');
+            ctx.fillStyle = gradGema; ctx.beginPath(); ctx.arc(-10.5, -28, 5, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+        } else {
+            ctx.fillStyle = '#2e7d32'; ctx.fillRect(-8, -16, 16, 26); ctx.strokeRect(-8, -16, 16, 26);
+            ctx.fillStyle = '#4e342e'; ctx.fillRect(-8, -3, 16, 4); ctx.strokeRect(-8, -3, 16, 4);
+            ctx.fillStyle = '#ffd700'; ctx.fillRect(-2, -3, 4, 4); ctx.strokeRect(-2, -3, 4, 4);
+            ctx.strokeStyle = '#8d6e63'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(11, -2, 12, -Math.PI/2, Math.PI/2); ctx.stroke();
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.moveTo(11, -14); ctx.lineTo(11, 10); ctx.stroke();
+            ctx.fillStyle = '#d7ccc8'; ctx.fillRect(4, -3, 12, 1.5);
+            ctx.fillStyle = '#d32f2f'; ctx.beginPath(); ctx.moveTo(16, -5); ctx.lineTo(19, -2); ctx.lineTo(16, 1); ctx.closePath(); ctx.fill();
+        }
+
+        ctx.lineWidth = 1.1;
+        ctx.fillStyle = '#ffcc80'; ctx.fillRect(-5, -26, 10, 10); ctx.strokeRect(-5, -26, 10, 10);
+        ctx.fillStyle = '#111'; ctx.fillRect(-2.5, -23, 1.2, 1.2); ctx.fillRect(1.5, -23, 1.2, 1.2);
+        ctx.fillStyle = 'rgba(255, 120, 150, 0.4)'; ctx.beginPath(); ctx.arc(-3, -19.5, 1, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(3, -19.5, 1, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle = '#111'; ctx.lineWidth = 0.6; ctx.beginPath(); ctx.arc(0, -19.5, 1.5, 0.2, Math.PI - 0.2); ctx.stroke();
+
+        ctx.lineWidth = 1;
+        if (tipo === 'warrior') { ctx.fillStyle = '#b0bec5'; ctx.fillRect(-7, -29, 14, 5); ctx.strokeRect(-7, -29, 14, 5); ctx.fillStyle = '#ffb300'; ctx.fillRect(-2, -32, 4, 4); ctx.strokeRect(-2, -32, 4, 4); }
+        else if (tipo === 'mage') { ctx.fillStyle = '#311b92'; ctx.beginPath(); ctx.moveTo(0, -36); ctx.lineTo(-7, -25); ctx.lineTo(7, -25); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.fillStyle = '#4a148c'; ctx.fillRect(-8, -26, 16, 2.5); ctx.strokeRect(-8, -26, 16, 2.5); }
+        else { ctx.fillStyle = '#1b5e20'; ctx.beginPath(); ctx.moveTo(0, -33); ctx.lineTo(-7, -25); ctx.lineTo(7, -25); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.fillStyle = '#d32f2f'; ctx.beginPath(); ctx.moveTo(2, -29); ctx.lineTo(7, -36); ctx.lineTo(4, -27); ctx.closePath(); ctx.fill(); }
+    } else {
+        if (tipo === 'warrior' || tipo === 'barbarian') {
+            let bodyColor = tipo === 'barbarian' ? '#bf360c' : '#558b2f';
+            ctx.fillStyle = bodyColor; ctx.fillRect(-10, -16, 20, 26); ctx.strokeRect(-10, -16, 20, 26);
+            ctx.fillStyle = '#3e2723'; ctx.fillRect(-8, 0, 16, 10); ctx.strokeRect(-8, 0, 16, 10);
+            ctx.fillStyle = '#37474f'; ctx.fillRect(-14, -18, 6, 8); ctx.strokeRect(-14, -18, 6, 8);
+            ctx.fillStyle = '#cfd8dc'; ctx.beginPath(); ctx.moveTo(-11, -18); ctx.lineTo(-11, -23); ctx.lineTo(-8, -18); ctx.closePath(); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = '#4e342e'; ctx.fillRect(11, -20, 3.5, 34); ctx.strokeRect(11, -20, 3.5, 34);
+            ctx.fillStyle = '#212121'; ctx.beginPath(); ctx.arc(12.5, -18, 6, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = '#fff'; ctx.fillRect(6.5, -19, 2, 2); ctx.fillRect(16.5, -19, 2, 2);
+        } else if (tipo === 'mage' || tipo === 'shaman') {
+            let color1 = tipo === 'shaman' ? '#00695c' : '#4a148c';
+            let color2 = tipo === 'shaman' ? '#004d40' : '#311b92';
+            ctx.fillStyle = color1; ctx.fillRect(-9, -16, 18, 26); ctx.strokeRect(-9, -16, 18, 26);
+            ctx.fillStyle = color2; ctx.fillRect(-7, -13, 14, 23); ctx.strokeRect(-7, -13, 14, 23);
+            ctx.fillStyle = '#00e5ff'; ctx.fillRect(-12, -26, 3, 38); ctx.strokeRect(-12, -26, 3, 38);
+        } else {
+            let bodyColor = tipo === 'assassin' ? '#212121' : '#689f38';
+            ctx.fillStyle = bodyColor; ctx.fillRect(-9, -16, 18, 26); ctx.strokeRect(-9, -16, 18, 26);
+            ctx.fillStyle = '#4e342e'; ctx.fillRect(-7, -10, 14, 4); ctx.strokeRect(-7, -10, 14, 4);
+            ctx.fillStyle = '#3e2723'; ctx.fillRect(-12, -14, 4, 16); ctx.strokeRect(-12, -14, 4, 16);
+            ctx.fillStyle = '#d7ccc8'; ctx.fillRect(-11, -20, 2, 6); ctx.fillRect(-9, -18, 2, 4);
+            ctx.strokeStyle = '#4e342e'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(10, -2, 13, -Math.PI/2, Math.PI/2); ctx.stroke();
+            ctx.strokeStyle = '#d7ccc8'; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.moveTo(10, -15); ctx.lineTo(10, 11); ctx.stroke();
+            ctx.fillStyle = '#5d4037'; ctx.fillRect(2, -3, 13, 1.5);
+            ctx.fillStyle = '#f5f5f5'; ctx.beginPath(); ctx.moveTo(15, -5); ctx.lineTo(19, -2); ctx.lineTo(15, 1); ctx.closePath(); ctx.fill(); ctx.stroke();
+        }
+
+        let headColor = '#689f38'; if(tipo === 'barbarian') headColor = '#d84315'; if(tipo === 'shaman') headColor = '#00796b'; if(tipo === 'assassin') headColor = '#424242';
+        ctx.fillStyle = headColor; ctx.fillRect(-6, -26, 12, 10); ctx.strokeRect(-6, -26, 12, 10);
+        let eyeColor = tipo === 'assassin' ? '#ff1744' : '#111';
+        ctx.fillStyle = eyeColor; ctx.fillRect(-3, -23, 1.5, 1.5); ctx.fillRect(1.5, -23, 1.5, 1.5);
+        ctx.strokeStyle = '#b71c1c'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(-3, -25); ctx.lineTo(-0.5, -24); ctx.moveTo(3, -25); ctx.lineTo(0.5, -24); ctx.stroke();
+        ctx.fillStyle = '#fff'; ctx.fillRect(-3, -18, 1.5, 2); ctx.fillRect(1.5, -18, 1.5, 2);
+        
+        let hatColor = '#37474f'; if(tipo === 'shaman') hatColor = '#004d40'; if(tipo === 'assassin') hatColor = '#212121';
+        ctx.fillStyle = hatColor; ctx.fillRect(-7, -29, 14, 4); ctx.strokeRect(-7, -29, 14, 4);
+        ctx.fillStyle = '#d7ccc8'; ctx.beginPath(); ctx.moveTo(-6, -28); ctx.lineTo(-9, -33); ctx.lineTo(-4, -28); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.beginPath(); ctx.moveTo(6, -28); ctx.lineTo(9, -33); ctx.lineTo(4, -28); ctx.closePath(); ctx.fill(); ctx.stroke();
+    }
+    ctx.restore();
+
+    ctx.save();
+    ctx.globalAlpha = 0.85;
+    ctx.fillStyle = isBoss ? '#d8b4fe' : '#ffffff'; 
+    ctx.font = isBoss ? 'bold 20px Segoe UI' : 'bold 18px Segoe UI'; 
+    ctx.textAlign = 'center'; ctx.fillText(nome, x, y - (isBoss ? 230 : 195));
+    ctx.fillStyle = 'rgba(0,0,0,0.75)'; ctx.fillRect(x - 50, y - 185, 100, 16);
+    let pctHp = Math.max(0, hp / maxHp);
+    ctx.fillStyle = ehHeroi ? '#e53935' : (isBoss ? '#9333ea' : '#f44336'); ctx.fillRect(x - 48, y - 183, 96 * pctHp, 12);
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 10px Segoe UI'; ctx.textAlign = 'center'; ctx.fillText(`${hp}/${maxHp}`, x, y - 174);
+    ctx.restore();
+}
+
+function renderGame(){
+    ctx.clearRect(0,0,canvas.width,canvas.height); desenharFundoCenario();
+    let casasMovimento = [];
+    if(personagemSelecionado && personagemSelecionado.isHero && turnoAtual === 'jogador' && !acaoPendente && personagemSelecionado.energia >= 15){
+        casasMovimento = obterVizinhos(personagemSelecionado.col, personagemSelecionado.row).filter(casa => !heroes.some(h => h.hp > 0 && h.col === casa.col && h.row === casa.row) && !enemies.some(e => e.hp > 0 && e.col === casa.col && e.row === casa.row));
+    }
+    for(let c = 0; c < 3; c++){
+        for(let r = 0; r < 6; r++){
+            const pos = getHexPos(c, r);
+            let fillColor = 'rgba(255, 255, 255, 0.03)', strokeColor = 'rgba(120, 160, 130, 0.4)'; 
+            if(personagemSelecionado && personagemSelecionado.col === c && personagemSelecionado.row === r){ fillColor = 'rgba(255, 215, 0, 0.10)'; strokeColor = 'rgba(255, 215, 0, 0.7)'; }
+            if(casasMovimento.some(m => m.col === c && m.row === r)){ fillColor = 'rgba(33, 150, 243, 0.12)'; strokeColor = 'rgba(100, 181, 246, 0.7)'; }
+            if(rangeAlvosValidos.some(h => h.col === c && h.row === r)){ fillColor = 'rgba(233, 30, 99, 0.18)'; strokeColor = 'rgba(244, 143, 177, 0.7)'; }
+            drawHexagon(pos.x, pos.y, hexRadius, fillColor, strokeColor);
+        }
+    }
+    heroes.forEach(hero => { if(hero.hp > 0) desenharPersonagemCustomizado(getHexPos(hero.col, hero.row).x, getHexPos(hero.col, hero.row).y, hero.type, hero.name, hero.hp, hero.maxHp, true, false); });
+    enemies.forEach(enemy => { if(enemy.hp > 0) desenharPersonagemCustomizado(getHexPos(enemy.col, enemy.row).x, getHexPos(enemy.col, enemy.row).y, enemy.type, enemy.name, enemy.hp, enemy.maxHp, false, enemy.isBoss); });
+    atualizarEDesenharTextosFlutuantes();
+}
+
+function getHexPos(col, row){
+    const horizDist = hexRadius * 1.732, vertDist = hexRadius * 1.5;
+    return { x: gridOrigin.x + col * horizDist + (row % 2 === 1 ? horizDist / 2 : 0), y: gridOrigin.y + row * vertDist };
+}
+
+function drawHexagon(centerX, centerY, radius, fillColor, strokeColor){
+    ctx.save(); ctx.beginPath();
+    for(let i = 0; i < 6; i++){ const angle = (Math.PI / 3) * i - Math.PI / 6; const x = centerX + radius * Math.cos(angle); const y = centerY + radius * Math.sin(angle); if(i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); }
+    ctx.closePath(); ctx.fillStyle = fillColor; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = strokeColor; ctx.stroke(); ctx.restore();
+}
+
+function obterVizinhos(col, row){
+    const par = (row % 2 === 0); const direcoes = par ? [{c:1,r:0},{c:0,r:1},{c:-1,r:1},{c:-1,r:0},{c:-1,r:-1},{c:0,r:-1}] : [{c:1,r:0},{c:1,r:1},{c:0,r:1},{c:-1,r:0},{c:0,r:-1},{c:1,r:-1}];
+    let vizinhos = []; direcoes.forEach(d => { let nc = col + d.c, nr = row + d.r; if(nc >= 0 && nc < 3 && nr >= 0 && nr < 6) vizinhos.push({col: nc, row: nr}); });
+    return vizinhos;
+}
+
+function converterParaCubo(col, row){ let q = col - (row - (row & 1)) / 2, r = row, s = -q - r; return { q, r, s }; }
+function calcularDistancia(hexA, hexB){ let a = converterParaCubo(hexA.col, hexA.row), b = converterParaCubo(hexB.col, hexB.row); return Math.max(Math.abs(a.q - b.q), Math.abs(a.r - b.r), Math.abs(a.s - b.s)); }
+function calcularHexesNoRaio(centroCol, centroRow, maxRange){
+    let hexes = []; for(let c = 0; c < 3; c++){ for(let r = 0; r < 6; r++){ let dist = calcularDistancia({col: centroCol, row: centroRow}, {col: c, row: r}); if(dist > 0 && dist <= maxRange) hexes.push({col: c, row: r}); } } return hexes;
+}
+
+function iniciarConjuracao(tempoSegundos, nomeSkill, callbackConclusao){
+    if(conjuracaoEmAndamento) return; conjuracaoEmAndamento = true;
+    tocarSom('magia');
+    const cdFloatingWrapper = document.getElementById('cd-floating-wrapper'); const cdBarFill = document.getElementById('cd-bar-fill'); const cdTimeTxt = document.getElementById('cd-time-txt');
+    document.getElementById('cd-title-txt').innerText = nomeSkill.toUpperCase();
+    cdFloatingWrapper.style.display = 'flex'; cdBarFill.style.width = '0%';
+    let tempoDecorrido = 0; let totalMs = tempoSegundos * 1000;
+    let intervaloCd = setInterval(()=>{
+        tempoDecorrido += 100; cdBarFill.style.width = `${Math.min(100, (tempoDecorrido / totalMs) * 100)}%`; cdTimeTxt.innerText = `${(tempoDecorrido / 1000).toFixed(1)}s`;
+        if(tempoDecorrido >= totalMs){ clearInterval(intervaloCd); conjuracaoEmAndamento = false; cdFloatingWrapper.style.display = 'none'; callbackConclusao(); }
+    }, 100);
+}
+
+function usarAcao(tipo){
+    if(!personagemSelecionado || !personagemSelecionado.isHero || turnoAtual !== 'jogador' || conjuracaoEmAndamento) return;
+    tocarSom('click');
+    if(tipo === 'pocao'){
+        if(personagemSelecionado.pocoes > 0 && personagemSelecionado.hp < personagemSelecionado.maxHp){
+            personagemSelecionado.pocoes--; personagemSelecionado.hp = Math.min(personagemSelecionado.maxHp, personagemSelecionado.hp + 40);
+            tocarSom('pocao');
+            const pos = getHexPos(personagemSelecionado.col, personagemSelecionado.row); 
+            adicionarTextoFlutuante(pos.x, pos.y - 120, "+40 HP", "#00e676");
+            adicionarEfeitoVisual(pos.x, pos.y, 'heal');
+            acaoPendente = null; rangeAlvosValidos = []; atualizarHUD(); renderGame();
+        } else { mostrarAviso("Não é possível usar a poção agora.", "aviso"); } return;
+    }
+    if(tipo === 'buff'){
+        if(personagemSelecionado.mp >= 15 && personagemSelecionado.energia >= 20){
+            if(acaoPendente === 'buff'){ acaoPendente = null; rangeAlvosValidos = []; } else {
+                acaoPendente = 'buff'; let casasAdjacentes = obterVizinhos(personagemSelecionado.col, personagemSelecionado.row); casasAdjacentes.push({col: personagemSelecionado.col, row: personagemSelecionado.row});
+                rangeAlvosValidos = heroes.filter(h => h.hp > 0 && casasAdjacentes.some(ca => ca.col === h.col && ca.row === h.row)).map(h => ({col: h.col, row: h.row}));
+                if(rangeAlvosValidos.length === 0){ acaoPendente = null; mostrarAviso("Nenhum aliado no alcance (range 1) para receber o Buff!", "aviso"); }
+                else mostrarAviso("Selecione um herói aliado adjacente para receber o Buff!", "sucesso");
+            }
+            atualizarHUD(); renderGame();
+        } else { mostrarAviso("MP ou Energia insuficientes para o Buff!", "erro"); } return;
+    }
+    if(acaoPendente === tipo){ acaoPendente = null; rangeAlvosValidos = []; }
+    else {
+        acaoPendente = tipo; let rangeSkill = (tipo === 'basica') ? personagemSelecionado.range : personagemSelecionado.skillForte.range;
+        rangeAlvosValidos = calcularHexesNoRaio(personagemSelecionado.col, personagemSelecionado.row, rangeSkill);
+        mostrarAviso(`Alcance de ${tipo === 'basica' ? 'Ataque' : personagemSelecionado.skillForte.nome} exibido! Clique num inimigo no alcance.`, 'sucesso');
+    }
+    atualizarHUD(); renderGame();
+}
+
+function tentarFugir(){
+    if(conjuracaoEmAndamento) return;
+    tocarSom('click');
+    abrirModal("Fugir da Batalha", "Deseja realmente tentar fugir da batalha?", "sim-nao", (confirmado) => { if(confirmado) iniciarBatalha(); });
+}
+
+function executarAtaqueHeroi(heroi, inimigo, tipoAtaque){
+    const distancia = calcularDistancia(heroi, inimigo);
+    if(tipoAtaque === 'forte'){
+        const sk = heroi.skillForte;
+        if(distancia > sk.range) return mostrarAviso("Alvo fora de alcance!", "aviso");
+        if(heroi.mp < sk.custoMp) return mostrarAviso("MP insuficiente!", "erro");
+        if(heroi.energia < sk.custoEnergia) return mostrarAviso("Energia insuficiente!", "erro");
+        acaoPendente = null; rangeAlvosValidos = [];
+        iniciarConjuracao(sk.castTime, sk.nome, ()=>{ 
+            heroi.mp -= sk.custoMp; 
+            heroi.energia -= sk.custoEnergia; 
+            aplicarDano(heroi, inimigo, sk.dano, sk.tipoDano); 
+        });
+    } else if(tipoAtaque === 'basica'){
+        if(distancia > heroi.range) return mostrarAviso("Alvo fora de alcance!", "aviso");
+        if(heroi.energia < 15) return mostrarAviso("Energia insuficiente!", "erro");
+        acaoPendente = null; rangeAlvosValidos = [];
+        iniciarConjuracao(0.5, "Ataque", ()=>{
+            heroi.energia -= 15;
+            let mpRecuperado = Math.round(heroi.maxMp * (heroi.type === 'mage' ? 0.20 : 0.15)); heroi.mp = Math.min(heroi.maxMp, heroi.mp + mpRecuperado);
+            const posHeroi = getHexPos(heroi.col, heroi.row); 
+            adicionarTextoFlutuante(posHeroi.x, posHeroi.y - 120, `+${mpRecuperado} MP`, "#00e5ff");
+            aplicarDano(heroi, inimigo, heroi.atk, 'fisico');
+        });
+    }
+}
+
+function aplicarDano(atacante, alvo, danoBase, tipoDano){
+    const posAlvo = getHexPos(alvo.col, alvo.row);
+    let totalEsquiva = alvo.esquiva || 0;
+    if (alvo.buffsAtivos) alvo.buffsAtivos.forEach(b => { if (b.tipo === 'esquiva') totalEsquiva += b.valor; });
+    
+    if (Math.random() * 100 < totalEsquiva) {
+        tocarSom('click');
+        adicionarTextoFlutuante(posAlvo.x, posAlvo.y - 120, "ESQUIVOU!", "#00e5ff"); 
+        mostrarAviso(`${alvo.name} esquivou do ataque!`, "aviso");
+        verificarFimDeTurnoAutomatico(); return;
+    }
+    let defesaEfetiva = 0;
+    if (tipoDano === 'magico') { 
+        defesaEfetiva = alvo.defMagica || 0; 
+        if (alvo.buffsAtivos) alvo.buffsAtivos.forEach(b => { if (b.tipo === 'defMagica') defesaEfetiva += b.valor; }); 
+        adicionarEfeitoVisual(posAlvo.x, posAlvo.y, 'magic');
+    } else { 
+        defesaEfetiva = alvo.defFisica || 0; 
+        if (alvo.buffsAtivos) alvo.buffsAtivos.forEach(b => { if (b.tipo === 'defFisica') defesaEfetiva += b.valor; }); 
+        adicionarEfeitoVisual(posAlvo.x, posAlvo.y, 'slash');
+    }
+
+    let danoFinal = danoBase > 0 ? Math.max(1, Math.round(danoBase * (1 - (defesaEfetiva / 100)))) : 0;
+    if(danoFinal > 0) {
+        alvo.hp -= danoFinal;
+        tocarSom(tipoDano === 'magico' ? 'magia' : 'dano');
+        adicionarTextoFlutuante(posAlvo.x, posAlvo.y - 120, `-${danoFinal}`, "#ff1744");
+    }
+    
+    atualizarHUD(); renderGame();
+    if(alvo.hp <= 0) mostrarAviso(`${alvo.name} foi derrotado!`, 'sucesso');
+
+    if(enemies.every(e => e.hp <= 0)){
+        clearInterval(relogio);
+        setTimeout(() => { passarTurnoAtual(); }, 1000);
+        return; 
+    }
+
+    if(heroes.every(h => h.hp <= 0)){
+        tocarSom('derrota');
+        abrirModal("Derrota", "Todos os heróis caíram em batalha! Deseja reiniciar do início?", "sim-nao", (confirmado) => { if(confirmado) iniciarBatalha(); }); return;
+    }
+    verificarFimDeTurnoAutomatico();
+}
+
+function executarTurnoInimigoInteligente(inimigo){
+    if(inimigo.hp <= 0){ passarTurnoAtual(); return; }
+    let heroisVivos = heroes.filter(h => h.hp > 0);
+    if(heroisVivos.length === 0){
+        tocarSom('derrota');
+        abrirModal("Derrota", "Heróis mortos. Reiniciar?", "sim-nao", (confirmado) => { if(confirmado) iniciarBatalha(); }); return;
+    }
+
+    if(inimigo.hp < (inimigo.maxHp * 0.25) && !fugaGlobalJaOcorreu && !inimigo.jaTentouFugir && !inimigo.isBoss){
+        inimigo.jaTentouFugir = true;
+        if(Math.random() < 0.5){ fugaGlobalJaOcorreu = true; enemies = enemies.filter(e => e.id !== inimigo.id); mostrarAviso(`${inimigo.name} fugiu!`, "aviso"); atualizarTimeline(); renderGame(); setTimeout(() => { passarTurnoAtual(); }, 1000); return; }
+        else mostrarAviso(`${inimigo.name} tentou fugir, mas falhou!`, "aviso");
+    }
+
+    if(inimigo.hp < (inimigo.maxHp * 0.5) && !inimigo.isBoss){
+        let vizinhos = obterVizinhos(inimigo.col, inimigo.row); let melhorCasaRecuo = null; let menorRow = inimigo.row;
+        vizinhos.forEach(v => { let ocupado = heroes.some(h => h.hp > 0 && h.col === v.col && h.row === v.row) || enemies.some(e => e.hp > 0 && e.col === v.col && e.row === v.row); if(!ocupado && v.row < menorRow){ menorRow = v.row; melhorCasaRecuo = v; } });
+        if(melhorCasaRecuo){ inimigo.col = melhorCasaRecuo.col; inimigo.row = melhorCasaRecuo.row; mostrarAviso(`${inimigo.name} recuou!`, "aviso"); renderGame(); }
+    }
+
+    if(inimigo.hp < (inimigo.maxHp * 0.5) && inimigo.pocoes > 0){
+        if( (inimigo.isBoss && Math.random() < 0.15) || (!inimigo.isBoss && Math.random() < 0.25) ) {
+            inimigo.pocoes--;
+            let cura = inimigo.isBoss ? 150 : 40;
+            inimigo.hp = Math.min(inimigo.maxHp, inimigo.hp + cura);
+            tocarSom('pocao');
+            const pos = getHexPos(inimigo.col, inimigo.row); 
+            adicionarTextoFlutuante(pos.x, pos.y - 120, `+${cura} HP`, "#00e676");
+            adicionarEfeitoVisual(pos.x, pos.y, 'heal');
+            mostrarAviso(`${inimigo.name} usou uma Poção de Cura!`, "sucesso"); renderGame();
+            setTimeout(() => { passarTurnoAtual(); }, 1000); return;
+        }
+    }
+
+    let alvoMaisFraco = heroisVivos.reduce((menor, h) => h.hp < menor.hp ? h : menor, heroisVivos[0]);
+    let distAlvo = calcularDistancia(inimigo, alvoMaisFraco);
+
+    if(distAlvo > inimigo.range && (!inimigo.isBoss || (inimigo.isBoss && distAlvo > inimigo.skillEspecial.range))){
+        let vizinhos = obterVizinhos(inimigo.col, inimigo.row); let melhorCasa = null; let menorDistVizinho = Infinity;
+        vizinhos.forEach(v => {
+            let ocupado = heroes.some(h => h.hp > 0 && h.col === v.col && h.row === v.row) || enemies.some(e => e.id !== inimigo.id && e.hp > 0 && e.col === v.col && e.row === v.row);
+            if(!ocupado){ let d = calcularDistancia(v, alvoMaisFraco); if(d < menorDistVizinho){ menorDistVizinho = d; melhorCasa = v; } }
+        });
+        if(melhorCasa){ inimigo.col = melhorCasa.col; inimigo.row = melhorCasa.row; distAlvo = calcularDistancia(inimigo, alvoMaisFraco); renderGame(); }
+    }
+
+    setTimeout(() => {
+        let maxRangeDisponivel = inimigo.range;
+        if(inimigo.skillForte && inimigo.skillForte.range > maxRangeDisponivel) maxRangeDisponivel = inimigo.skillForte.range;
+        if(inimigo.isBoss && inimigo.skillEspecial && inimigo.skillEspecial.range > maxRangeDisponivel) maxRangeDisponivel = inimigo.skillEspecial.range;
+
+        if(distAlvo <= maxRangeDisponivel && alvoMaisFraco.hp > 0){
+            let usouSkill = false;
+            
+            if(inimigo.isBoss && inimigo.mp >= inimigo.skillEspecial.custoMp && distAlvo <= inimigo.skillEspecial.range && Math.random() < 0.4) {
+                 inimigo.mp -= inimigo.skillEspecial.custoMp;
+                 mostrarAviso(`${inimigo.name} usou ${inimigo.skillEspecial.nome}!`, "aviso");
+                 aplicarDano(inimigo, alvoMaisFraco, inimigo.skillEspecial.dano, inimigo.skillEspecial.tipoDano);
+                 usouSkill = true;
+            }
+            else if(!usouSkill && inimigo.mp >= inimigo.skillForte.custoMp && distAlvo <= inimigo.skillForte.range && Math.random() < 0.6) {
+                 inimigo.mp -= inimigo.skillForte.custoMp;
+                 if(inimigo.skillForte.nome.includes('Puxão Brutal')){
+                     let vizinhosOgro = obterVizinhos(inimigo.col, inimigo.row); 
+                     let casaLivre = vizinhosOgro.find(v => !heroes.some(h => h.hp > 0 && h.col === v.col && h.row === v.row) && !enemies.some(e => e.hp > 0 && e.col === v.col && e.row === v.row));
+                     if(casaLivre){ alvoMaisFraco.col = casaLivre.col; alvoMaisFraco.row = casaLivre.row; }
+                     alvoMaisFraco.stunTurns = 1; const posAlvo = getHexPos(alvoMaisFraco.col, alvoMaisFraco.row); adicionarTextoFlutuante(posAlvo.x, posAlvo.y - 120, "ATORDOADO!", "#ffd700");
+                     mostrarAviso(`${inimigo.name} usou ${inimigo.skillForte.nome}! ${alvoMaisFraco.name} atordoado.`, "aviso");
+                 } else {
+                     mostrarAviso(`${inimigo.name} usou ${inimigo.skillForte.nome}!`, "aviso");
+                     aplicarDano(inimigo, alvoMaisFraco, inimigo.skillForte.dano, inimigo.skillForte.tipoDano);
+                 }
+                 usouSkill = true;
+            }
+            
+            if(!usouSkill) {
+                if(distAlvo <= inimigo.range) {
+                    let tipoDano = (inimigo.type === 'mage' || inimigo.type === 'shaman') ? 'magico' : 'fisico';
+                    aplicarDano(inimigo, alvoMaisFraco, inimigo.atk, tipoDano);
+                } else {
+                    mostrarAviso(`${inimigo.name} aguarda o momento certo...`, "aviso");
+                }
+            }
+        }
+        atualizarHUD(); renderGame();
+        setTimeout(() => { passarTurnoAtual(); }, 800);
+    }, 600);
+}
+
+canvas.addEventListener('click', (event)=>{
+    if(turnoAtual !== 'jogador' || conjuracaoEmAndamento) return;
+    const rect = canvas.getBoundingClientRect(); const scaleX = canvas.width / rect.width; const scaleY = canvas.height / rect.height;
+    processarClique((event.clientX - rect.left) * scaleX, (event.clientY - rect.top) * scaleY);
+});
+
+function processarClique(x, y){
+    if(acaoPendente === 'buff' && personagemSelecionado && personagemSelecionado.isHero) {
+        let aliadoClicado = heroes.find(h => h.hp > 0 && Math.hypot(getHexPos(h.col, h.row).x - x, getHexPos(h.col, h.row).y - y) <= 120);
+        if(aliadoClicado) {
+            let casasAdjacentes = obterVizinhos(personagemSelecionado.col, personagemSelecionado.row); casasAdjacentes.push({col: personagemSelecionado.col, row: personagemSelecionado.row});
+            if(!casasAdjacentes.some(ca => ca.col === aliadoClicado.col && ca.row === aliadoClicado.row)){ mostrarAviso("Alvo du buff fora de alcance!", "aviso"); return; }
+            iniciarConjuracao(1.0, "Buff", ()=>{
+                personagemSelecionado.mp -= 15; personagemSelecionado.energia -= 20;
+                let tBuff = '', vBuff = 15, nBuffText = '', cBuffText = '#ffd700';
+                if(personagemSelecionado.type === 'warrior') { tBuff = 'defFisica'; nBuffText = '+15% Def. Fís'; cBuffText = '#b0bec5'; }
+                else if(personagemSelecionado.type === 'mage') { tBuff = 'defMagica'; nBuffText = '+15% Def. Mág'; cBuffText = '#40c4ff'; }
+                else if(personagemSelecionado.type === 'archer') { tBuff = 'esquiva'; nBuffText = '+15% Esq'; cBuffText = '#81c784'; }
+                aliadoClicado.buffsAtivos.push({ tipo: tBuff, valor: vBuff, turnosRestantes: 2 });
+                tocarSom('magia');
+                const pos = getHexPos(aliadoClicado.col, aliadoClicado.row); 
+                adicionarTextoFlutuante(pos.x, pos.y - 120, nBuffText, cBuffText);
+                adicionarEfeitoVisual(pos.x, pos.y, 'buff');
+                mostrarAviso(`${personagemSelecionado.name} aplicou buff em ${aliadoClicado.name}!`, 'sucesso');
+                acaoPendente = null; rangeAlvosValidos = []; atualizarHUD(); renderGame(); verificarFimDeTurnoAutomatico();
+            }); return;
+        }
+    }
+
+    let inimigoClicado = enemies.find(e => e.hp > 0 && Math.hypot(getHexPos(e.col, e.row).x - x, getHexPos(e.col, e.row).y - y) <= 120);
+    if(inimigoClicado && personagemSelecionado && personagemSelecionado.isHero){
+        if(!acaoPendente){ mostrarAviso("Selecione uma habilidade antes!", "aviso"); return; }
+        executarAtaqueHeroi(personagemSelecionado, inimigoClicado, acaoPendente); return;
+    }
+
+    let hexClicado = null; let menorDist = Infinity;
+    for(let c = 0; c < 3; c++){
+        for(let r = 0; r < 6; r++){
+            const pos = getHexPos(c, r); const dist = Math.hypot(pos.x - x, pos.y - y);
+            if(dist < hexRadius && dist < menorDist){ menorDist = dist; hexClicado = { col: c, row: r }; }
+        }
+    }
+
+    if(hexClicado && personagemSelecionado && personagemSelecionado.isHero && !acaoPendente){
+        let casasPossiveis = obterVizinhos(personagemSelecionado.col, personagemSelecionado.row).filter(casa => !heroes.some(h => h.hp > 0 && h.col === casa.col && h.row === casa.row) && !enemies.some(e => e.hp > 0 && e.col === casa.col && e.row === casa.row));
+        if(casasPossiveis.some(m => m.col === hexClicado.col && m.row === hexClicado.row)){
+            if(personagemSelecionado.energia >= 15){
+                personagemSelecionado.energia -= 15; personagemSelecionado.col = hexClicado.col; personagemSelecionado.row = hexClicado.row;
+                tocarSom('ataque');
+                atualizarHUD(); renderGame(); verificarFimDeTurnoAutomatico();
+            } else { mostrarAviso("Energia insuficiente para mover! (Necessário 15)", "erro"); }
+        }
+    }
+}
+
+iniciarBatalha();
+</script>
+</body>
+</html>
